@@ -97,6 +97,13 @@ echo "RUN_TESTS:$RUN_TESTS CLEAN:$CLEAN USE_HINTS:$USE_HINTS RENAME_x86:$RENAME_
 OS=`uname`
 MACHINE=`uname -m`
 
+if pwd | fgrep -q com.termux
+then
+	TERMUX=yes
+else
+	TERMUX=no
+fi
+
 if [ "$OS" != "Linux" -a "$OS" != "Darwin" -a "$OS" != "FreeBSD" -a "$OS" != "SunOS" ]; then
     echo "Unsupported platform: $OS, please submit a patch or provide us with access to a development system."
     exit
@@ -245,7 +252,7 @@ if [ $? -ne 0 ] ; then
     fi
 fi
 
-if [ "$OS" = "Linux" ]; then
+if [ "$OS" = "Linux" -a "$TERMUX" != "yes" ]; then
    #for i in libgif libz libgd ; do
    for i in libz ; do
        ldconfig -p | grep "${i}.so" > /dev/null
@@ -576,6 +583,9 @@ function build_module {
 }
 
 function build_all {
+    if [ "$TERMUX" = "yes" ]; then
+    build IO::Socket::SSL
+    fi
     build Audio::Scan
     build Class::C3::XS
     build Class::XSAccessor
@@ -592,7 +602,6 @@ function build_all {
     build Image::Scale
     build IO::AIO
     build IO::Interface
-#   build IO::Socket::SSL
     build JSON::XS
     build Linux::Inotify2
     build Mac::FSEvents
@@ -697,6 +706,9 @@ function build {
                 fi
                 CFLAGS="$ICUFLAGS" CXXFLAGS="$ICUFLAGS" LDFLAGS="$FLAGS $OSX_ARCH $OSX_FLAGS" \
                     ./runConfigureICU $ICUOS --prefix=$BUILD --enable-static --with-data-packaging=archive
+                if [ "$TERMUX" = "yes" ]; then
+                    sed -i 's/U_HAVE_XLOCALE_H=1/U_HAVE_XLOCALE_H=0/' icudefs.mk
+                fi
                 $MAKE
                 if [ $? != 0 ]; then
                     echo "make failed"
@@ -855,6 +867,15 @@ function build {
 
             cp -R ../hints .
             export PERL5LIB=$PERL_BASE/lib/perl5
+            if [ "$TERMUX" = "yes" ]; then
+                #module usualy builds against openssl-1.1, so prepare a OPENSSL_PREFIX
+                export OPENSSL_PREFIX=`pwd`/../openssl
+                mkdir -p ${OPENSSL_PREFIX}/include
+                mkdir -p ${OPENSSL_PREFIX}/lib
+                ln -sf ${PREFIX}/include/openssl-1.1/openssl ${OPENSSL_PREFIX}/include/openssl
+                ln -sf ${PREFIX}/lib/openssl-1.1/libcrypto.a ${OPENSSL_PREFIX}/lib/libcrypto.a
+                ln -sf ${PREFIX}/lib/openssl-1.1/libssl.a    ${OPENSSL_PREFIX}/lib/libssl.a
+            fi
             $PERL_BIN Makefile.PL INSTALL_BASE=$PERL_BASE
 
             if [ "$OS" = "Darwin" ]; then
@@ -862,7 +883,9 @@ function build {
                 patch -p0 < ../NetSSLeay-macOS-static.patch
             fi
 
-            $MAKE test
+            if [ "$RUN_TEST" = 1 ]; then
+                $MAKE test
+            fi
 
             if [ $? != 0 ]; then
                 echo "make failed, aborting"
@@ -872,8 +895,10 @@ function build {
             $MAKE install
 
             cd ..
-            rm -rf Net-SSLeay-1.92
-            rm -rf openssl
+            if [ "$CLEAN" = 1 ]; then
+                rm -rf Net-SSLeay-1.92
+                rm -rf openssl
+            fi
 
             tar_wrapper zxf IO-Socket-SSL-2.072.tar.gz
 
@@ -1245,7 +1270,7 @@ function build_libjpeg {
         $MAKE install
         cd ..
 
-    elif [[ "$ARCH" =~ ^(i[3456]86-linux|x86_64-linux|i86pc-solaris).*$ ]]; then
+    elif [[ "$ARCH" =~ ^(i[3456]86-linux|x86_64-linux|i86pc-solaris|aarch46-android).*$ ]]; then
         # build libjpeg-turbo
         tar_wrapper zxf $TURBO_VER.tar.gz
         cd $TURBO_VER
@@ -1328,7 +1353,11 @@ function build_giflib {
     tar_wrapper zxf giflib-4.1.6.tar.gz
     cd giflib-4.1.6
     . ../update-config.sh
-    CFLAGS="$FLAGS $OSX_ARCH $OSX_FLAGS -O3" \
+    if [ "$TERMUX" = "yes" ]
+    then
+	TERMUX_CFLAGS="-D__USE_GNU"
+    fi
+    CFLAGS="$FLAGS $OSX_ARCH $OSX_FLAGS $TERMUX_CFLAGS -O3" \
     LDFLAGS="$FLAGS $OSX_ARCH $OSX_FLAGS -O3" \
         ./configure --prefix=$BUILD \
         --disable-dependency-tracking
