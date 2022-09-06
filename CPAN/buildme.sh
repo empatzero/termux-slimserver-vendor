@@ -474,6 +474,8 @@ RAW_ARCH=`$PERL_BIN -MConfig -le 'print $Config{archname}'`
 # Strip out extra -gnu on Linux for use within this build script
 ARCH=`echo $RAW_ARCH | sed 's/gnu-//' | sed 's/armv.*?-/arm-/' `
 
+echo "ARCH=${ARCH}"
+
 # Default behavior is to rename all x86 architectures to i386
 if [ $RENAME_x86 -eq 1 ]; then
    ARCH=`echo "$ARCH" | sed 's/^i[3456]86-/i386-/'`
@@ -1270,7 +1272,7 @@ function build_libjpeg {
         $MAKE install
         cd ..
 
-    elif [[ "$ARCH" =~ ^(i[3456]86-linux|x86_64-linux|i86pc-solaris|aarch46-android).*$ ]]; then
+    elif [[ "$ARCH" =~ ^(i[3456]86-linux|x86_64-linux|i86pc-solaris|aarch46-android|x86_64-android).*$ ]]; then
         # build libjpeg-turbo
         tar_wrapper zxf $TURBO_VER.tar.gz
         cd $TURBO_VER
